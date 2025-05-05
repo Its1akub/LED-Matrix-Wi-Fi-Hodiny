@@ -25,7 +25,7 @@ Timezone myTZ;
 
 WiFiServer server(80);
 
-int countdown = 15;  
+int countdown = 0;  
 int milestone = 10; 
 unsigned long lastUpdate = 0;
 String milestoneMessage = "Milestone!";
