@@ -25,10 +25,11 @@ Timezone myTZ;
 
 WiFiServer server(80);
 
-int countdown = 0;  
-int milestone = 10; 
+int countdown = 0;
+int milestone = 10;
 unsigned long lastUpdate = 0;
 String milestoneMessage = "Milestone!";
+
 
 void setup() {
   Serial.begin(115200);
@@ -83,11 +84,21 @@ void loop() {
   int currentHour = hour(now);
   int currentMinute = minute(now);
   
+  static char prevTimeBuffer[9] = "";
   char timeBuffer[9];
   sprintf(timeBuffer, "%02d:%02d", currentHour, currentMinute);
-  parola.displayZoneText(0, timeBuffer, PA_CENTER, 0, 0, PA_PRINT, PA_NO_EFFECT);
-  parola.displayZoneText(1, timeBuffer, PA_CENTER, 0, 0, PA_PRINT, PA_NO_EFFECT);
-  parola.synchZoneStart();
+
+  if (strcmp(prevTimeBuffer, timeBuffer) != 0) {  
+    strcpy(prevTimeBuffer, timeBuffer); 
+
+    parola.displayZoneText(0, timeBuffer, PA_CENTER, 50, 0, PA_OPENING_CURSOR, PA_NO_EFFECT);
+    parola.displayZoneText(1, timeBuffer, PA_CENTER, 50, 0, PA_OPENING_CURSOR, PA_NO_EFFECT);
+    parola.synchZoneStart();
+
+    while (!parola.getZoneStatus(0) || !parola.getZoneStatus(1)) {
+      parola.displayAnimate();
+    }
+  }
 
   if (countdown > 0) {
     unsigned long currentMillis = millis();
@@ -207,4 +218,5 @@ String decodeURIComponent(String input) {
   }
   return decoded;
 }
+
 
