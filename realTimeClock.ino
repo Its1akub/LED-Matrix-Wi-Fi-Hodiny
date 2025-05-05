@@ -1,20 +1,18 @@
 #include <WiFi.h>
 #include <ezTime.h>
-#include <ArduinoJson.h>
 
 #include "arduino_secrets.h"
 #include "Font_Data.h"
 
 #include <MD_Parola.h>
 #include <MD_MAX72xx.h>
-#include <SPI.h>
 
 char ssid[] = SECRET_SSID;
 char pass[] = SECRET_PASS;
 
 
 #define HARDWARE_TYPE MD_MAX72XX::FC16_HW
-#define MAX_DEVICES 16  // 2x výška (8 zařízení na šířku)
+#define MAX_DEVICES 16 
 #define MAX_ZONES 2
 #define ZONE_SIZE (MAX_DEVICES / MAX_ZONES)
 
@@ -27,14 +25,23 @@ Timezone myTZ;
 
 WiFiServer server(80);
 
-int countdown = 0;  // Countdown time in seconds
-int milestone = 10; // Example milestone time in seconds
+int countdown = 15;  
+int milestone = 10; 
 unsigned long lastUpdate = 0;
+String milestoneMessage = "Milestone!";
 
 void setup() {
   Serial.begin(115200);
+  
+  parola.begin(MAX_ZONES);
+  parola.setIntensity(0);
+  parola.displayClear();
 
-  // Connect to Wi-Fi
+  parola.setZone(0, 0, ZONE_SIZE - 1);
+  parola.setZone(1, ZONE_SIZE, MAX_DEVICES - 1);
+  parola.setFont(0, BigFontBottom);
+  parola.setFont(1, BigFontUp);
+ 
   WiFi.begin(ssid, pass);
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
@@ -43,17 +50,7 @@ void setup() {
   Serial.println("Connected to WiFi");
 
   waitForSync();
-	myTZ.setLocation("Europe/Prague");  // Set your time zone
-
-
-  parola.begin(MAX_ZONES);
-  parola.setIntensity(0);  // Nastavení jasu displeje
-  parola.displayClear();
-
-  parola.setZone(0, 0, ZONE_SIZE - 1);
-  parola.setZone(1, ZONE_SIZE, MAX_DEVICES - 1);
-  parola.setFont(0, BigFontBottom);
-  parola.setFont(1, BigFontUp);
+	myTZ.setLocation("Europe/Prague");
 
   server.begin();
   Serial.println("Server started");
@@ -69,7 +66,7 @@ void setup() {
     parola.displayAnimate();
   }
 
-  delay(2000); // Necháme IP adresu chvíli zobrazenou
+  delay(2000);
   parola.displayClear();
 
 }
@@ -81,8 +78,6 @@ void loop() {
     handleClientRequest(client);
   }
 
-  //Serial.print("Current Local Date & Time: ");
-  //Serial.println(myTZ.dateTime("d.m.Y H:i:s"));
   time_t now = myTZ.now();
 
   int currentHour = hour(now);
@@ -96,11 +91,11 @@ void loop() {
 
   if (countdown > 0) {
     unsigned long currentMillis = millis();
-    if (currentMillis - lastUpdate >= 1000) { // Update every second
+    if (currentMillis - lastUpdate >= 1000) { 
       lastUpdate = currentMillis;
       countdown--;
 
-      // If milestone is reached, make the display blink
+      
       char countdownBuffer[10];
       sprintf(countdownBuffer, "%d", countdown);
       parola.displayZoneText(0, countdownBuffer, PA_CENTER, 50, 50, PA_SCROLL_UP, PA_SCROLL_DOWN);
@@ -111,19 +106,18 @@ void loop() {
       }
     }
 
-    // Blink effect when reaching the milestone
     if (countdown == milestone) {
       parola.displayClear();
       
-      parola.displayZoneText(0, "Milestone!", PA_CENTER, 50, 50, PA_WIPE, PA_MESH);
-      parola.displayZoneText(1, "Milestone!", PA_CENTER, 50, 50, PA_WIPE, PA_MESH);
+      textEffect_t effect = (milestoneMessage.length() > (ZONE_SIZE * 8 / 6)) ? PA_SCROLL_LEFT : PA_WIPE;
+      parola.displayZoneText(0, milestoneMessage.c_str(), PA_CENTER, 50, 50, effect, PA_MESH);
+      parola.displayZoneText(1, milestoneMessage.c_str(), PA_CENTER, 50, 50, effect, PA_MESH);
       parola.synchZoneStart();
       while (!parola.getZoneStatus(0) || !parola.getZoneStatus(1)) {
         parola.displayAnimate();
       }
     }
 
-    // Final message when countdown ends
     if (countdown == 0) {
       parola.displayClear();
       parola.displayZoneText(0, "Time's Up!", PA_CENTER, 50, 50, PA_WIPE, PA_MESH);
@@ -142,28 +136,33 @@ void loop() {
 void handleClientRequest(WiFiClient client) {
   String request = "";
   while (client.available()) {
-    //request += client.readStringUntil('\r');
-    request += char(client.read());  // Read full request
+    request += char(client.read()); 
   }
   client.flush();
   Serial.println("Full request:");
   Serial.println(request);
 
   if (request.indexOf("POST") >= 0) {
-    // Read content length
     int contentIndex = request.indexOf("countdown=");
     if (contentIndex != -1) {
       int countdownIndex = request.indexOf("countdown=") + 10;
       int milestoneIndex = request.indexOf("milestone=") + 10;
+      int milestoneTextIndex = request.indexOf("milestoneText=") + 14;
 
       countdown = request.substring(countdownIndex, request.indexOf("&", countdownIndex)).toInt()+1;
-      milestone = request.substring(milestoneIndex).toInt();
+      milestone = request.substring(milestoneIndex, request.indexOf("&", milestoneIndex)).toInt();
+
+      int endIndex = request.indexOf("&", milestoneTextIndex);
+      if (endIndex == -1) endIndex = request.length();
+      milestoneMessage = request.substring(milestoneTextIndex, endIndex);
+      milestoneMessage.replace('+', ' ');
+      milestoneMessage = decodeURIComponent(milestoneMessage);
 
       Serial.println("Updated countdown: " + String(countdown));
       Serial.println("Updated milestone: " + String(milestone));
+      Serial.println("Milestone message: " + milestoneMessage);
     }
 
-    // Send response
     String response = "Settings updated. <a href='/'>Go back</a>";
     client.println("HTTP/1.1 200 OK");
     client.println("Content-Type: text/html");
@@ -171,11 +170,11 @@ void handleClientRequest(WiFiClient client) {
     client.println();
     client.println(response);
   } else {
-    // Serve HTML form
     String html = "<html><body><h2>Countdown Timer</h2>";
     html += "<form action='/setCountdown' method='POST'>";
     html += "Countdown (seconds): <input type='number' name='countdown' value='" + String(countdown) + "'><br>";
     html += "Milestone (seconds): <input type='number' name='milestone' value='" + String(milestone) + "'><br>";
+    html += "Milestone text: <input type='text' name='milestoneText' value='" + milestoneMessage + "'><br>";
     html += "<input type='submit' value='Set Timer'>";
     html += "</form></body></html>";
     
@@ -188,5 +187,24 @@ void handleClientRequest(WiFiClient client) {
 
   delay(1);
   client.stop();
+}
+
+String decodeURIComponent(String input) {
+  String decoded = "";
+  char temp[] = "0x00";
+  unsigned int len = input.length();
+  for (unsigned int i = 0; i < len; i++) {
+    if (input[i] == '%') {
+      if (i + 2 < len) {
+        temp[2] = input[i + 1];
+        temp[3] = input[i + 2];
+        decoded += char(strtol(temp, NULL, 16));
+        i += 2;
+      }
+    } else {
+      decoded += input[i];
+    }
+  }
+  return decoded;
 }
 
