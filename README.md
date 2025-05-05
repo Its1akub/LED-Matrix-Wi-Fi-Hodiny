@@ -39,3 +39,11 @@ Přístupné na IP adrese zařízení v místní síti. Obsahuje formulář pro 
 ```cpp
 #define SECRET_SSID "váš_wifi_ssid"
 #define SECRET_PASS "vaše_wifi_heslo"
+```
+4. Připojte LED matici na piny dle definic v kódu (DATA_PIN, CLK_PIN, CS_PIN)
+
+5. Nahrajte program do zařízení
+
+6. Po připojení k síti se na displeji zobrazí IP adresa
+
+7. Přistupte na zobrazenou IP adresu v prohlížeči a nastavte časovač
